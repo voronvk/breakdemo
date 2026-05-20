@@ -1,0 +1,72 @@
+{
+  "name": "breakdemo",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "BreakPart": {
+          "$className": "RemoteFunction"
+        },
+        "BreakFeedback": {
+          "$className": "RemoteEvent"
+        },
+        "PartRespawn": {
+          "$className": "RemoteEvent"
+        },
+        "XPCollected": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
+
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+
+    "StarterGui": {
+      "ScreenGui": {
+        "$className": "ScreenGui",
+        "$properties": {
+          "ResetOnSpawn": false
+        },
+        "Contador": {
+          "$className": "TextLabel",
+          "RespawnCounter": {
+            "$path": "src/ui/RespawnCounter.client.luau"
+          }
+        }
+      }
+    },
+
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMode": "Classic",
+        "CameraMinZoomDistance": 0.5,
+        "CameraMaxZoomDistance": 128
+      },
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}
