@@ -8,6 +8,7 @@ require(script.CrosshairHighlight)
 require(script.BreakVFX)
 require(script.BreakCashLabel)
 require(script.HammerSwing)
+require(script.DragBreak)
 
 if GameConfig.XPEnabled then
 	require(script.XPPickup)

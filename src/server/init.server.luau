@@ -8,6 +8,7 @@ BreakCollision.setupPlayers()
 require(script.BreakRespawnService)
 require(script.BreakService)
 require(script.FallBreak)
+require(script.DragBreak)
 
 if GameConfig.XPEnabled then
 	require(script.XPService)

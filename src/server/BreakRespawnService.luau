@@ -882,6 +882,7 @@ function BreakRespawnService.respawnPart(part: BasePart): boolean
 	part:SetAttribute("Broken", nil)
 	part:SetAttribute("Shattered", nil)
 	part:SetAttribute("HiddenForRespawn", nil)
+	part:SetAttribute("DragWeldsBroken", nil)
 	part:SetAttribute("RespawnTargetSize", snapshot.size)
 
 	snapshotsByPart[part] = nil

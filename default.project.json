@@ -15,6 +15,9 @@
         "BreakFeedback": {
           "$className": "RemoteEvent"
         },
+        "DragBreak": {
+          "$className": "RemoteEvent"
+        },
         "PartRespawn": {
           "$className": "RemoteEvent"
         },

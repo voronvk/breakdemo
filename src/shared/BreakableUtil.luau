@@ -47,15 +47,31 @@ function BreakableUtil.getClusterSearchRoot(part: BasePart): Instance
 	return part:FindFirstAncestorWhichIsA("Model") or part.Parent or part
 end
 
+function BreakableUtil.getBreakableSearchRoot(part: BasePart): Instance
+	local current: Instance? = part
+	while current do
+		if CollectionService:HasTag(current, GameConfig.BreakableTag) then
+			return current
+		end
+		current = current.Parent
+	end
+
+	return BreakableUtil.getClusterSearchRoot(part)
+end
+
+local function isWeldLike(inst: Instance): boolean
+	return inst:IsA("WeldConstraint") or inst:IsA("Weld")
+end
+
 function BreakableUtil.getBreakCluster(part: BasePart, includeNearbySiblings: boolean?): { BasePart }
-	local searchRoot = BreakableUtil.getClusterSearchRoot(part)
+	local searchRoot = BreakableUtil.getBreakableSearchRoot(part)
 	local connected: { [BasePart]: boolean } = { [part] = true }
 	local changed = true
 
 	while changed do
 		changed = false
 		for _, inst in searchRoot:GetDescendants() do
-			if inst:IsA("WeldConstraint") or inst:IsA("Weld") then
+			if isWeldLike(inst) then
 				local p0 = inst.Part0
 				local p1 = inst.Part1
 				if p0 and p1 and p0:IsA("BasePart") and p1:IsA("BasePart") then
@@ -98,15 +114,34 @@ function BreakableUtil.getBreakCluster(part: BasePart, includeNearbySiblings: bo
 	return cluster
 end
 
+function BreakableUtil.removeWeldsForPart(part: BasePart)
+	for _, child in part:GetChildren() do
+		if isWeldLike(child) then
+			child:Destroy()
+		end
+	end
+
+	local searchRoot = BreakableUtil.getBreakableSearchRoot(part)
+	for _, inst in searchRoot:GetDescendants() do
+		if isWeldLike(inst) then
+			local p0 = inst.Part0
+			local p1 = inst.Part1
+			if p0 == part or p1 == part then
+				inst:Destroy()
+			end
+		end
+	end
+end
+
 function BreakableUtil.removeClusterWelds(cluster: { BasePart }, part: BasePart)
-	local searchRoot = BreakableUtil.getClusterSearchRoot(part)
+	local searchRoot = BreakableUtil.getBreakableSearchRoot(part)
 	local inCluster: { [BasePart]: boolean } = {}
 	for _, clusterPart in cluster do
 		inCluster[clusterPart] = true
 	end
 
 	for _, inst in searchRoot:GetDescendants() do
-		if inst:IsA("WeldConstraint") or inst:IsA("Weld") then
+		if isWeldLike(inst) then
 			local p0 = inst.Part0
 			local p1 = inst.Part1
 			if p0 and p1 and (inCluster[p0] or inCluster[p1]) then
