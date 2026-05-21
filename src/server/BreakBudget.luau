@@ -28,6 +28,10 @@ function BreakBudget.releaseBroken()
 	activeBrokenCount = math.max(0, activeBrokenCount - 1)
 end
 
+function BreakBudget.resetAll()
+	activeBrokenCount = 0
+end
+
 function BreakBudget.getDebrisCount(): number
 	local folder = Workspace:FindFirstChild(debrisFolderName)
 	if not folder then

@@ -7,7 +7,7 @@ local BreakCollision = require(ReplicatedStorage.Shared.BreakCollision)
 
 local FallShatter = {}
 
-local function shatterOnGround(part: BasePart, contactPoint: Vector3)
+local function shatterOnGround(part: BasePart, contactPoint: Vector3, _hitPart: BasePart)
 	if part:GetAttribute("Shattered") then
 		return
 	end

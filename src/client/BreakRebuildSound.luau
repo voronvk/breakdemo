@@ -59,6 +59,10 @@ local function shouldPlayBuildLoop(): boolean
 		return true
 	end
 
+	if ReplicatedStorage:GetAttribute("MapRestoring") == true then
+		return true
+	end
+
 	local nextRespawnTime = ReplicatedStorage:GetAttribute("NextRespawnTime")
 	if typeof(nextRespawnTime) ~= "number" then
 		return false
@@ -77,6 +81,7 @@ end
 
 ReplicatedStorage:GetAttributeChangedSignal("NextRespawnTime"):Connect(syncBuildLoop)
 ReplicatedStorage:GetAttributeChangedSignal("RespawnWaveInProgress"):Connect(syncBuildLoop)
+ReplicatedStorage:GetAttributeChangedSignal("MapRestoring"):Connect(syncBuildLoop)
 
 RunService.RenderStepped:Connect(syncBuildLoop)
 

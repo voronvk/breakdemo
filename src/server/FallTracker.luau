@@ -5,7 +5,7 @@ local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 
 local FallTracker = {}
 
-export type ImpactHandler = (part: BasePart, contactPoint: Vector3) -> ()
+export type ImpactHandler = (part: BasePart, contactPoint: Vector3, hitPart: BasePart) -> ()
 
 type Entry = {
 	peakY: number,
@@ -52,7 +52,11 @@ local function isFloorHit(hit: Instance, fallingPart: BasePart): boolean
 		return false
 	end
 
-	if hit == fallingPart or hit:IsDescendantOf(fallingPart) then
+	if hit == fallingPart then
+		return false
+	end
+
+	if hit.AssemblyRootPart == fallingPart.AssemblyRootPart then
 		return false
 	end
 
@@ -72,16 +76,66 @@ local function isFloorHit(hit: Instance, fallingPart: BasePart): boolean
 	return hit.CanCollide
 end
 
-function FallTracker.isWatching(part: BasePart): boolean
+function FallTracker.isWatching(part: BasePart?): boolean
+	if not part then
+		return false
+	end
+
 	local entry = entries[part]
 	return entry ~= nil and not entry.done
 end
 
-function FallTracker.unwatch(part: BasePart)
+function FallTracker.unwatch(part: BasePart?)
+	if not part then
+		return
+	end
+
 	entries[part] = nil
 	if next(entries) == nil then
 		disconnectHeartbeat()
 	end
+end
+
+function FallTracker.clearAll()
+	table.clear(entries)
+	disconnectHeartbeat()
+end
+
+local function connectTouchWatch(
+	anchorPart: BasePart,
+	touchPart: BasePart,
+	entry: Entry,
+	onImpact: ImpactHandler
+)
+	touchPart.Touched:Connect(function(hit)
+		if entry.done or not anchorPart.Parent then
+			return
+		end
+
+		if os.clock() - entry.lastTouch < 0.15 then
+			return
+		end
+
+		if not isFloorHit(hit, anchorPart) then
+			return
+		end
+
+		local velocity = anchorPart.AssemblyLinearVelocity
+		local fallDistance = entry.peakY - anchorPart.Position.Y
+		local fallingFast = velocity.Y <= -entry.minSpeed
+		local fellEnough = fallDistance >= entry.minHeight
+
+		if not fallingFast and not fellEnough then
+			return
+		end
+
+		entry.done = true
+		entry.lastTouch = os.clock()
+		FallTracker.unwatch(anchorPart)
+
+		local contactPoint = touchPart.Position - Vector3.yAxis * (touchPart.Size.Y * 0.5)
+		onImpact(anchorPart, contactPoint, hit)
+	end)
 end
 
 function FallTracker.watch(
@@ -90,6 +144,7 @@ function FallTracker.watch(
 	options: {
 		minHeight: number?,
 		minSpeed: number?,
+		touchParts: { BasePart }?,
 	}?
 )
 	if FallTracker.isWatching(part) then
@@ -107,35 +162,10 @@ function FallTracker.watch(
 	entries[part] = entry
 	ensureHeartbeat()
 
-	part.Touched:Connect(function(hit)
-		if entry.done or not part.Parent then
-			return
-		end
-
-		if os.clock() - entry.lastTouch < 0.15 then
-			return
-		end
-
-		if not isFloorHit(hit, part) then
-			return
-		end
-
-		local velocity = part.AssemblyLinearVelocity
-		local fallDistance = entry.peakY - part.Position.Y
-		local fallingFast = velocity.Y <= -entry.minSpeed
-		local fellEnough = fallDistance >= entry.minHeight
-
-		if not fallingFast and not fellEnough then
-			return
-		end
-
-		entry.done = true
-		entry.lastTouch = os.clock()
-		FallTracker.unwatch(part)
-
-		local contactPoint = part.Position - Vector3.yAxis * (part.Size.Y * 0.5)
-		onImpact(part, contactPoint)
-	end)
+	local touchParts = if options and options.touchParts then options.touchParts else { part }
+	for _, touchPart in touchParts do
+		connectTouchWatch(part, touchPart, entry, onImpact)
+	end
 
 	part.Destroying:Connect(function()
 		entry.done = true

@@ -4,8 +4,39 @@ local TweenService = game:GetService("TweenService")
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 
 local partRespawnRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("PartRespawn") :: RemoteEvent
+local mapRevealBatchRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("MapRevealBatch") :: RemoteEvent
+
+local ORIG_TRANSPARENCY_ATTR = "CloneMapOrigTransparency"
 
 local activeTweens: { [BasePart]: { Tween } } = {}
+
+local function getTargetTransparency(instance: Instance): number
+	local original = instance:GetAttribute(ORIG_TRANSPARENCY_ATTR)
+	if typeof(original) == "number" then
+		return original
+	end
+
+	if instance:IsA("BasePart") or instance:IsA("Decal") or instance:IsA("Texture") then
+		return instance.Transparency
+	end
+
+	return 0
+end
+
+local function addPartRevealTweens(part: BasePart, tweens: { Tween }, tweenInfo: TweenInfo)
+	part.Transparency = 1
+
+	local goals: { [string]: any } = {
+		Transparency = getTargetTransparency(part),
+	}
+
+	local targetSize = part:GetAttribute("RespawnTargetSize")
+	if typeof(targetSize) == "Vector3" then
+		goals.Size = targetSize
+	end
+
+	table.insert(tweens, TweenService:Create(part, tweenInfo, goals))
+end
 
 local function playScaleIn(part: BasePart)
 	if activeTweens[part] then
@@ -21,17 +52,29 @@ local function playScaleIn(part: BasePart)
 		Enum.EasingDirection.Out
 	)
 
-	local targetSize = part:GetAttribute("RespawnTargetSize")
-	if typeof(targetSize) == "Vector3" then
-		table.insert(tweens, TweenService:Create(part, tweenInfo, { Size = targetSize }))
-	end
+	addPartRevealTweens(part, tweens, tweenInfo)
 
 	for _, descendant in part:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			local baseSize = descendant:GetAttribute("RespawnBaseSize")
 			if typeof(baseSize) == "Vector3" then
-				table.insert(tweens, TweenService:Create(descendant, tweenInfo, { Size = baseSize }))
+				descendant.Transparency = 1
+				table.insert(
+					tweens,
+					TweenService:Create(descendant, tweenInfo, {
+						Transparency = getTargetTransparency(descendant),
+						Size = baseSize,
+					})
+				)
 			end
+		elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
+			descendant.Transparency = 1
+			table.insert(
+				tweens,
+				TweenService:Create(descendant, tweenInfo, {
+					Transparency = getTargetTransparency(descendant),
+				})
+			)
 		end
 	end
 
@@ -52,11 +95,11 @@ local function playScaleIn(part: BasePart)
 			activeTweens[part] = nil
 		end
 
-		local targetSize = part:GetAttribute("RespawnTargetSize")
-		if typeof(targetSize) == "Vector3" then
-			part.Size = targetSize
+		local finalSize = part:GetAttribute("RespawnTargetSize")
+		if typeof(finalSize) == "Vector3" then
+			part.Size = finalSize
 		end
-		part:SetAttribute("RespawnTargetSize", nil)
+		part.Transparency = getTargetTransparency(part)
 
 		for _, descendant in part:GetDescendants() do
 			if descendant:IsA("BasePart") then
@@ -64,18 +107,50 @@ local function playScaleIn(part: BasePart)
 				if typeof(baseSize) == "Vector3" then
 					descendant.Size = baseSize
 				end
-				descendant:SetAttribute("RespawnBaseSize", nil)
+				descendant.Transparency = getTargetTransparency(descendant)
+			elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
+				descendant.Transparency = getTargetTransparency(descendant)
 			end
 		end
 	end)
 end
 
-partRespawnRemote.OnClientEvent:Connect(function(part: unknown)
-	if typeof(part) ~= "Instance" or not part:IsA("BasePart") then
-		return
+local function playScaleInBatch(parts: { BasePart })
+	for _, part in parts do
+		if part.Parent then
+			playScaleIn(part)
+		end
+	end
+end
+
+local function parseBatchPayload(payload: unknown): { BasePart }
+	local batch: { BasePart } = {}
+
+	if typeof(payload) == "Instance" and payload:IsA("BasePart") then
+		table.insert(batch, payload)
+		return batch
 	end
 
-	playScaleIn(part)
+	if typeof(payload) ~= "table" then
+		return batch
+	end
+
+	for _, entry in payload do
+		if typeof(entry) == "Instance" and entry:IsA("BasePart") then
+			table.insert(batch, entry)
+		end
+	end
+
+	return batch
+end
+
+partRespawnRemote.OnClientEvent:Connect(function(part: unknown)
+	local batch = parseBatchPayload(part)
+	if #batch > 0 then
+		playScaleInBatch(batch)
+	end
 end)
+
+mapRevealBatchRemote.OnClientEvent:Connect(playScaleInBatch)
 
 return nil

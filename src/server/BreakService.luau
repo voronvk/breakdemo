@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
+local CloneMapService = require(script.Parent.CloneMapService)
 local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
 local BreakCollision = require(ReplicatedStorage.Shared.BreakCollision)
 local BreakBudget = require(script.Parent.BreakBudget)
@@ -13,6 +14,10 @@ local FallTracker = require(script.Parent.FallTracker)
 local breakPartRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("BreakPart") :: RemoteFunction
 
 local BreakService = {}
+
+export type PhysicsBreakOptions = {
+	useStrongBreak: boolean?,
+}
 
 local breakingParts: { [BasePart]: boolean } = {}
 local frozenClusters: { [BasePart]: { BasePart } } = {}
@@ -100,21 +105,8 @@ local function resolveBreakCluster(part: BasePart, expandSiblings: boolean): { B
 	return BreakableUtil.filterBreakableCluster(BreakableUtil.getBreakCluster(part, expandSiblings))
 end
 
-local function registerClusterForRespawn(cluster: { BasePart })
-	if #cluster == 0 then
-		return
-	end
-
-	local treeRoot = BreakableUtil.getTreeRoot(cluster[1])
-	if treeRoot then
-		BreakRespawnService.registerTreeClusterBroken(treeRoot, cluster)
-		return
-	end
-
-	for _, clusterPart in cluster do
-		local respawnSnapshot = BreakRespawnService.captureSnapshot(clusterPart)
-		BreakRespawnService.registerBrokenPart(clusterPart, respawnSnapshot)
-	end
+local function registerClusterForRespawn(_cluster: { BasePart })
+	BreakRespawnService.notifyMapDamaged()
 end
 
 local function markClusterBroken(cluster: { BasePart })
@@ -175,14 +167,7 @@ local function quickCleanupCluster(cluster: { BasePart }, primaryPart: BasePart)
 			local partsToHide = getPartsNeedingHide(sessionCluster)
 
 			if #partsToHide > 0 then
-				for _, clusterPart in partsToHide do
-					if not BreakRespawnService.hasSnapshot(clusterPart) then
-						BreakRespawnService.registerBrokenPart(
-							clusterPart,
-							BreakRespawnService.captureSnapshot(clusterPart)
-						)
-					end
-				end
+				BreakRespawnService.notifyMapDamaged()
 				fadeAndHideClusterForRespawn(primaryPart, sessionCluster, fadeDuration)
 			else
 				releaseClusterState(primaryPart, sessionCluster)
@@ -446,13 +431,7 @@ local function scheduleFadeAndCleanup(primaryPart: BasePart, useLightBreak: bool
 			return
 		end
 
-		for _, clusterPart in partsToHide do
-			if not BreakRespawnService.hasSnapshot(clusterPart) then
-				local respawnSnapshot = BreakRespawnService.captureSnapshot(clusterPart)
-				BreakRespawnService.registerBrokenPart(clusterPart, respawnSnapshot)
-			end
-		end
-
+		BreakRespawnService.notifyMapDamaged()
 		fadeAndHideClusterForRespawn(primaryPart, sessionCluster, fadeDuration)
 	end)
 end
@@ -464,8 +443,13 @@ local function breakPartInternal(
 	hitter: Player?,
 	useStrongBreak: boolean,
 	isPrimaryHit: boolean,
-	inheritedUseLightBreak: boolean?
+	inheritedUseLightBreak: boolean?,
+	clusterOverride: { BasePart }?
 ): (boolean, boolean)
+	if ReplicatedStorage:GetAttribute("MapRestoring") == true or CloneMapService.isRestoring() then
+		return false, false
+	end
+
 	if not part:IsDescendantOf(workspace) or not BreakableUtil.isBreakable(part) then
 		return false, false
 	end
@@ -478,12 +462,31 @@ local function breakPartInternal(
 		return false, false
 	end
 
-	local cluster = resolveBreakCluster(part, isPrimaryHit)
+	local isHammerBreak = hitter ~= nil
+
+	if not isHammerBreak and BreakableUtil.isHard(part) then
+		return false, false
+	end
+
+	local cluster = if clusterOverride
+		then BreakableUtil.filterBreakableCluster(clusterOverride)
+		else resolveBreakCluster(part, isPrimaryHit)
+	if not isHammerBreak then
+		cluster = BreakableUtil.filterBreakableCluster(BreakableUtil.filterNonHardParts(cluster))
+	end
 	if #cluster == 0 then
 		return false, false
 	end
 
-	frozenClusters[part] = cluster
+	local primaryPart = cluster[1]
+	for _, clusterPart in cluster do
+		if clusterPart == part then
+			primaryPart = part
+			break
+		end
+	end
+
+	frozenClusters[primaryPart] = cluster
 	registerClusterForRespawn(cluster)
 
 	local useLightBreak: boolean
@@ -497,28 +500,28 @@ local function breakPartInternal(
 		markClusterBroken(cluster)
 		applyHitTintToCluster(cluster, useStrongBreak)
 		if XPService then
-			XPService.trySpawnFromBreak(part, impactPoint)
+			XPService.trySpawnFromBreak(primaryPart, impactPoint)
 		end
-		quickCleanupCluster(cluster, part)
+		quickCleanupCluster(cluster, primaryPart)
 		return true, useLightBreak
 	end
 
 	markClusterBroken(cluster)
 	if XPService then
-		XPService.trySpawnFromBreak(part, impactPoint)
+		XPService.trySpawnFromBreak(primaryPart, impactPoint)
 	end
 	applyHitTintToCluster(cluster, useStrongBreak)
 
 	local useBudgetLightVfx = not BreakBudget.useFullVfx()
 
 	local function runPhysics()
-		local sessionCluster = frozenClusters[part] or cluster
-		if not part.Parent then
-			releaseClusterState(part, sessionCluster)
+		local sessionCluster = frozenClusters[primaryPart] or cluster
+		if not primaryPart.Parent then
+			releaseClusterState(primaryPart, sessionCluster)
 			return
 		end
-		releaseClusterPhysics(part, sessionCluster, impactPoint, hitter, useStrongBreak, isPrimaryHit, useBudgetLightVfx)
-		scheduleFadeAndCleanup(part, useLightBreak)
+		releaseClusterPhysics(primaryPart, sessionCluster, impactPoint, hitter, useStrongBreak, isPrimaryHit, useBudgetLightVfx)
+		scheduleFadeAndCleanup(primaryPart, useLightBreak)
 	end
 
 	if physicsDelay > 0 then
@@ -530,8 +533,28 @@ local function breakPartInternal(
 	return true, useLightBreak
 end
 
-function BreakService.breakFromFall(part: BasePart, contactPoint: Vector3?)
-	breakPartInternal(part, contactPoint, 0, nil, false, false, nil)
+function BreakService.breakFromFall(part: BasePart, contactPoint: Vector3?, options: PhysicsBreakOptions?)
+	if BreakableUtil.isHard(part) then
+		return
+	end
+
+	local useStrongBreak = options ~= nil and options.useStrongBreak == true
+	local instanceParts =
+		BreakableUtil.filterNonHardParts(BreakableUtil.getBreakableInstanceParts(part))
+	if #instanceParts == 0 then
+		return
+	end
+
+	breakPartInternal(part, contactPoint, 0, nil, useStrongBreak, false, nil, instanceParts)
+end
+
+function BreakService.resetMapState()
+	for part in breakingParts do
+		breakingParts[part] = nil
+	end
+	for primaryPart in frozenClusters do
+		frozenClusters[primaryPart] = nil
+	end
 end
 
 local function breakPart(player: Player, part: BasePart): boolean

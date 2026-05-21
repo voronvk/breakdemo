@@ -4,6 +4,11 @@ local GameConfig = require(script.Parent.GameConfig)
 
 local BreakableUtil = {}
 
+local function hasBreakRootTag(instance: Instance): boolean
+	return CollectionService:HasTag(instance, GameConfig.BreakableTag)
+		or CollectionService:HasTag(instance, GameConfig.HardTag)
+end
+
 function BreakableUtil.isBreakable(part: Instance): boolean
 	if not part:IsA("BasePart") then
 		return false
@@ -11,13 +16,37 @@ function BreakableUtil.isBreakable(part: Instance): boolean
 
 	local current: Instance? = part
 	while current do
-		if CollectionService:HasTag(current, GameConfig.BreakableTag) then
+		if hasBreakRootTag(current) then
 			return true
 		end
 		current = current.Parent
 	end
 
 	return false
+end
+
+function BreakableUtil.isHard(instance: Instance): boolean
+	local current: Instance? = instance
+	while current do
+		if CollectionService:HasTag(current, GameConfig.HardTag) then
+			return true
+		end
+		current = current.Parent
+	end
+
+	return false
+end
+
+function BreakableUtil.filterNonHardParts(parts: { BasePart }): { BasePart }
+	local active: { BasePart } = {}
+
+	for _, clusterPart in parts do
+		if not BreakableUtil.isHard(clusterPart) then
+			table.insert(active, clusterPart)
+		end
+	end
+
+	return active
 end
 
 function BreakableUtil.getDistanceToPart(player: Player, part: BasePart): number?
@@ -50,7 +79,7 @@ end
 function BreakableUtil.getBreakableSearchRoot(part: BasePart): Instance
 	local current: Instance? = part
 	while current do
-		if CollectionService:HasTag(current, GameConfig.BreakableTag) then
+		if hasBreakRootTag(current) then
 			return current
 		end
 		current = current.Parent
@@ -190,6 +219,23 @@ function BreakableUtil.filterBreakableCluster(cluster: { BasePart }): { BasePart
 	end
 
 	return active
+end
+
+function BreakableUtil.getBreakableInstanceParts(part: BasePart): { BasePart }
+	local searchRoot = BreakableUtil.getBreakableSearchRoot(part)
+	local parts: { BasePart } = {}
+
+	if searchRoot:IsA("BasePart") and not BreakableUtil.isPartBrokenState(searchRoot) then
+		table.insert(parts, searchRoot)
+	end
+
+	for _, descendant in searchRoot:GetDescendants() do
+		if descendant:IsA("BasePart") and not BreakableUtil.isPartBrokenState(descendant) then
+			table.insert(parts, descendant)
+		end
+	end
+
+	return parts
 end
 
 return BreakableUtil

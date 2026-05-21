@@ -21,6 +21,9 @@
         "PartRespawn": {
           "$className": "RemoteEvent"
         },
+        "MapRevealBatch": {
+          "$className": "RemoteEvent"
+        },
         "XPCollected": {
           "$className": "RemoteEvent"
         }

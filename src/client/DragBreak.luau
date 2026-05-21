@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local BreakSound = require(script.Parent.BreakSound)
+local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
 
 local player = Players.LocalPlayer
 local dragBreakRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DragBreak") :: RemoteEvent
@@ -54,7 +55,7 @@ local function hookDragDetector(dragDetector: DragDetector)
 		end
 
 		local targetPart = resolveDragPart(dragDetector, clickedPart)
-		if targetPart then
+		if targetPart and not BreakableUtil.isHard(targetPart) then
 			requestDragBreak(targetPart)
 		end
 	end)

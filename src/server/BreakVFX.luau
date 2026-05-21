@@ -292,12 +292,7 @@ function BreakVFX.quickFadePart(part: BasePart)
 		return
 	end
 
-	for _, clusterPart in visibleCluster do
-		if not BreakRespawnService.hasSnapshot(clusterPart) then
-			BreakRespawnService.registerBrokenPart(clusterPart, BreakRespawnService.captureSnapshot(clusterPart))
-		end
-	end
-
+	BreakRespawnService.notifyMapDamaged()
 	BreakRespawnService.fadeAndHideCluster(visibleCluster, GameConfig.GroundShatterFadeDuration)
 end
 

@@ -1,7 +1,9 @@
 return {
 	HammerToolNames = { "Martillo", "Hammer" },
 	BreakableTag = "Breakable",
+	HardTag = "Hard",
 	TreeTag = "Tree",
+	CloneMapFolderName = "Clone",
 	PlayerCollisionGroup = "BreakPlayer",
 	BrokenBreakableCollisionGroup = "BrokenBreakable",
 
@@ -10,6 +12,13 @@ return {
 	BreakRespawnDominoStagger = 0.028,
 	BreakRespawnScaleInDuration = 0.2,
 	BreakRespawnScaleInStart = 0.04,
+
+	CloneMapRevealBatchSize = 1,
+	CloneMapRevealByRoot = true,
+	CloneMapRevealStagger = 0.12,
+	CloneMapTeardownBatchSize = 36,
+	CloneMapTeardownStagger = 0.005,
+	CloneMapFastTeardownPartCount = 350,
 	HighlightHoverColor = Color3.fromRGB(255, 255, 255),
 	HighlightInRangeColor = Color3.fromRGB(80, 255, 120),
 	HighlightOutOfRangeColor = Color3.fromRGB(255, 70, 70),
@@ -89,9 +98,16 @@ return {
 	GroundShatterDebrisMax = 14,
 	GroundShatterFadeDuration = 0.35,
 
-	FallBreakMinHeight = 3,
-	FallBreakMinSpeed = 10,
-	FallBreakFreefallVelocity = -2.5,
+	FallBreakMinHeight = 0.35,
+	FallBreakMinSpeed = 1.75,
+	FallBreakFreefallVelocity = -0.1,
+
+	CollisionBreakMinRelativeSpeed = 7,
+	CollisionBreakCooldown = 0.2,
+
+	HardBreakOthersMinRelativeSpeed = 5,
+	HardFallBreakMinHeight = 0.75,
+	HardFallBreakMinSpeed = 3,
 
 	XPEnabled = false,
 
