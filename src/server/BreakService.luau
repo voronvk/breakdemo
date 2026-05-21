@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
+local BreakCollision = require(ReplicatedStorage.Shared.BreakCollision)
 local BreakBudget = require(script.Parent.BreakBudget)
 local BreakVFX = require(script.Parent.BreakVFX)
 local XPService = if GameConfig.XPEnabled then require(script.Parent.XPService) else nil
@@ -41,6 +42,34 @@ local function fadeAndHideClusterForRespawn(primaryPart: BasePart, cluster: { Ba
 	end)
 end
 
+local function isTreeCluster(cluster: { BasePart }): boolean
+	for _, clusterPart in cluster do
+		if BreakableUtil.getTreeRoot(clusterPart) then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function resolveClusterFadeTiming(cluster: { BasePart }, useLightBreak: boolean): (number, number)
+	if isTreeCluster(cluster) then
+		local fadeDelay = GameConfig.TreeBreakFadeDelay + randomInRange(0, GameConfig.TreeBreakFadeDelayVariance)
+		local fadeDuration = GameConfig.TreeBreakFadeDuration
+			+ randomInRange(-GameConfig.TreeBreakFadeDurationVariance, GameConfig.TreeBreakFadeDurationVariance)
+		return fadeDelay, math.max(0.2, fadeDuration)
+	end
+
+	if useLightBreak then
+		return GameConfig.LightBreakFadeDelay, 0.4
+	end
+
+	local fadeDelay = GameConfig.BreakFadeDelay + randomInRange(0, GameConfig.BreakFadeDelayVariance)
+	local fadeDuration = GameConfig.BreakFadeDuration
+		+ randomInRange(-GameConfig.BreakFadeDurationVariance, GameConfig.BreakFadeDurationVariance)
+	return fadeDelay, math.max(0.2, fadeDuration)
+end
+
 local function getPartsNeedingHide(cluster: { BasePart }): { BasePart }
 	local parts: { BasePart } = {}
 
@@ -72,6 +101,16 @@ local function resolveBreakCluster(part: BasePart, expandSiblings: boolean): { B
 end
 
 local function registerClusterForRespawn(cluster: { BasePart })
+	if #cluster == 0 then
+		return
+	end
+
+	local treeRoot = BreakableUtil.getTreeRoot(cluster[1])
+	if treeRoot then
+		BreakRespawnService.registerTreeClusterBroken(treeRoot, cluster)
+		return
+	end
+
 	for _, clusterPart in cluster do
 		local respawnSnapshot = BreakRespawnService.captureSnapshot(clusterPart)
 		BreakRespawnService.registerBrokenPart(clusterPart, respawnSnapshot)
@@ -79,6 +118,8 @@ local function registerClusterForRespawn(cluster: { BasePart })
 end
 
 local function markClusterBroken(cluster: { BasePart })
+	BreakCollision.applyBrokenCluster(cluster)
+
 	for _, clusterPart in cluster do
 		breakingParts[clusterPart] = true
 		clusterPart:SetAttribute("Broken", true)
@@ -99,11 +140,14 @@ local function tryRecoverStuckBreak(part: BasePart): boolean
 	registerClusterForRespawn(cluster)
 	frozenClusters[part] = cluster
 
-	BreakRespawnService.fadeAndHideCluster(cluster, 0.25, function()
-		for _, clusterPart in cluster do
-			breakingParts[clusterPart] = nil
-		end
-		frozenClusters[part] = nil
+	local fadeDelay, fadeDuration = resolveClusterFadeTiming(cluster, true)
+	task.delay(fadeDelay, function()
+		BreakRespawnService.fadeAndHideCluster(cluster, fadeDuration, function()
+			for _, clusterPart in cluster do
+				breakingParts[clusterPart] = nil
+			end
+			frozenClusters[part] = nil
+		end)
 	end)
 
 	return true
@@ -114,20 +158,42 @@ local function quickCleanupCluster(cluster: { BasePart }, primaryPart: BasePart)
 		FallTracker.unwatch(clusterPart)
 	end
 
-	BreakableUtil.removeExternalWelds(cluster, primaryPart)
+	BreakableUtil.removeClusterWelds(cluster, primaryPart)
 
 	for _, clusterPart in cluster do
-		if clusterPart.Parent then
-			clusterPart.CanCollide = false
-			if clusterPart.Anchored then
-				clusterPart.Anchored = false
-			end
+		if clusterPart.Parent and clusterPart.Anchored then
+			clusterPart.Anchored = false
 		end
 	end
 
 	local partsToHide = getPartsNeedingHide(cluster)
 	if #partsToHide > 0 then
-		fadeAndHideClusterForRespawn(primaryPart, cluster, 0.35)
+		local fadeDelay, fadeDuration = resolveClusterFadeTiming(cluster, true)
+
+		local function runFade()
+			local sessionCluster = frozenClusters[primaryPart] or cluster
+			local partsToHide = getPartsNeedingHide(sessionCluster)
+
+			if #partsToHide > 0 then
+				for _, clusterPart in partsToHide do
+					if not BreakRespawnService.hasSnapshot(clusterPart) then
+						BreakRespawnService.registerBrokenPart(
+							clusterPart,
+							BreakRespawnService.captureSnapshot(clusterPart)
+						)
+					end
+				end
+				fadeAndHideClusterForRespawn(primaryPart, sessionCluster, fadeDuration)
+			else
+				releaseClusterState(primaryPart, sessionCluster)
+			end
+		end
+
+		if fadeDelay > 0 then
+			task.delay(fadeDelay, runFade)
+		else
+			runFade()
+		end
 	else
 		releaseClusterState(primaryPart, cluster)
 	end
@@ -272,7 +338,7 @@ local function releaseClusterPhysics(
 	isPrimaryHit: boolean,
 	useBudgetLightVfx: boolean
 )
-	BreakableUtil.removeExternalWelds(cluster, primaryPart)
+	BreakableUtil.removeClusterWelds(cluster, primaryPart)
 
 	applyClusterPartPhysics(
 		primaryPart,
@@ -369,14 +435,7 @@ local function scheduleFadeAndCleanup(primaryPart: BasePart, useLightBreak: bool
 		return
 	end
 
-	local fadeDelay = if useLightBreak
-		then GameConfig.LightBreakFadeDelay
-		else GameConfig.BreakFadeDelay + randomInRange(0, GameConfig.BreakFadeDelayVariance)
-
-	local fadeDuration = if useLightBreak
-		then 0.4
-		else GameConfig.BreakFadeDuration + randomInRange(-GameConfig.BreakFadeDurationVariance, GameConfig.BreakFadeDurationVariance)
-	fadeDuration = math.max(0.2, fadeDuration)
+	local fadeDelay, fadeDuration = resolveClusterFadeTiming(cluster, useLightBreak)
 
 	task.delay(fadeDelay, function()
 		local sessionCluster = frozenClusters[primaryPart] or cluster
@@ -385,6 +444,13 @@ local function scheduleFadeAndCleanup(primaryPart: BasePart, useLightBreak: bool
 		if #partsToHide == 0 then
 			releaseClusterState(primaryPart, sessionCluster)
 			return
+		end
+
+		for _, clusterPart in partsToHide do
+			if not BreakRespawnService.hasSnapshot(clusterPart) then
+				local respawnSnapshot = BreakRespawnService.captureSnapshot(clusterPart)
+				BreakRespawnService.registerBrokenPart(clusterPart, respawnSnapshot)
+			end
 		end
 
 		fadeAndHideClusterForRespawn(primaryPart, sessionCluster, fadeDuration)
@@ -397,30 +463,35 @@ local function breakPartInternal(
 	physicsDelay: number,
 	hitter: Player?,
 	useStrongBreak: boolean,
-	isPrimaryHit: boolean
-): boolean
+	isPrimaryHit: boolean,
+	inheritedUseLightBreak: boolean?
+): (boolean, boolean)
 	if not part:IsDescendantOf(workspace) or not BreakableUtil.isBreakable(part) then
-		return false
+		return false, false
 	end
 
 	if tryRecoverStuckBreak(part) then
-		return true
+		return true, true
 	end
 
-	if breakingParts[part] or BreakableUtil.isPartBrokenState(part) then
-		return false
+	if breakingParts[part] or BreakableUtil.isPartBrokenState(part) or BreakableUtil.isTreeForming(part) then
+		return false, false
 	end
 
 	local cluster = resolveBreakCluster(part, isPrimaryHit)
 	if #cluster == 0 then
-		return false
+		return false, false
 	end
 
 	frozenClusters[part] = cluster
 	registerClusterForRespawn(cluster)
 
-	local hasBudget = BreakBudget.tryRegisterBroken()
-	local useLightBreak = not hasBudget
+	local useLightBreak: boolean
+	if isPrimaryHit then
+		useLightBreak = not BreakBudget.tryRegisterBroken()
+	else
+		useLightBreak = inheritedUseLightBreak == true
+	end
 
 	if useLightBreak then
 		markClusterBroken(cluster)
@@ -429,7 +500,7 @@ local function breakPartInternal(
 			XPService.trySpawnFromBreak(part, impactPoint)
 		end
 		quickCleanupCluster(cluster, part)
-		return true
+		return true, useLightBreak
 	end
 
 	markClusterBroken(cluster)
@@ -456,11 +527,11 @@ local function breakPartInternal(
 		runPhysics()
 	end
 
-	return true
+	return true, useLightBreak
 end
 
 function BreakService.breakFromFall(part: BasePart, contactPoint: Vector3?)
-	breakPartInternal(part, contactPoint, 0, nil, false, false)
+	breakPartInternal(part, contactPoint, 0, nil, false, false, nil)
 end
 
 local function breakPart(player: Player, part: BasePart): boolean
@@ -481,7 +552,8 @@ local function breakPart(player: Player, part: BasePart): boolean
 		end
 	end
 
-	if not breakPartInternal(part, impactPoint, 0, player, true, true) then
+	local ok, primaryUseLightBreak = breakPartInternal(part, impactPoint, 0, player, true, true, nil)
+	if not ok then
 		return false
 	end
 
@@ -499,7 +571,7 @@ local function breakPart(player: Player, part: BasePart): boolean
 			end
 
 			local stagger = randomInRange(0, GameConfig.ChainBreakStaggerMax) * index
-			breakPartInternal(nearbyPart, part.Position, stagger, player, true, false)
+			breakPartInternal(nearbyPart, part.Position, stagger, player, true, false, primaryUseLightBreak)
 		end
 	end)
 

@@ -1,6 +1,9 @@
 return {
 	HammerToolNames = { "Martillo", "Hammer" },
 	BreakableTag = "Breakable",
+	TreeTag = "Tree",
+	PlayerCollisionGroup = "BreakPlayer",
+	BrokenBreakableCollisionGroup = "BrokenBreakable",
 
 	BreakRange = 8,
 	BreakRespawnDelay = 30,
@@ -38,6 +41,11 @@ return {
 	BreakFadeDuration = 0.6,
 	BreakFadeDurationVariance = 0.25,
 
+	TreeBreakFadeDelay = 4.75,
+	TreeBreakFadeDelayVariance = 0.85,
+	TreeBreakFadeDuration = 1.05,
+	TreeBreakFadeDurationVariance = 0.3,
+
 	HitTintColor = Color3.fromRGB(220, 95, 95),
 	HitTintAmount = 0.3,
 	HitTintAmountVariance = 0.12,
@@ -53,6 +61,9 @@ return {
 	MaxActiveBrokenParts = 28,
 	MaxDebrisInWorld = 120,
 	LightBreakFadeDelay = 0.85,
+
+	TreeLightBreakFadeDelay = 1.85,
+	TreeLightBreakFadeDuration = 0.75,
 
 	DebrisMinCount = 4,
 	DebrisMaxCount = 8,

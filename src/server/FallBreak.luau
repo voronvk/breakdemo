@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BreakService = require(script.Parent.BreakService)
 local FallTracker = require(script.Parent.FallTracker)
+local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 
 local FallBreak = {}
@@ -30,7 +31,7 @@ local function shouldTrackFreefall(part: BasePart): boolean
 		return false
 	end
 
-	if part.Anchored then
+	if part.Anchored or BreakableUtil.isTreeForming(part) then
 		return false
 	end
 

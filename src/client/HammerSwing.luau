@@ -36,7 +36,10 @@ local function tryBreakTarget(tool: Tool): boolean
 		return false
 	end
 
-	if target:GetAttribute("Broken") or target:GetAttribute("HiddenForRespawn") then
+	if target:GetAttribute("Broken")
+		or target:GetAttribute("HiddenForRespawn")
+		or target:GetAttribute("TreeForming")
+	then
 		return false
 	end
 

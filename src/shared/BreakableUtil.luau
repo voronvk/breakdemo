@@ -98,7 +98,7 @@ function BreakableUtil.getBreakCluster(part: BasePart, includeNearbySiblings: bo
 	return cluster
 end
 
-function BreakableUtil.removeExternalWelds(cluster: { BasePart }, part: BasePart)
+function BreakableUtil.removeClusterWelds(cluster: { BasePart }, part: BasePart)
 	local searchRoot = BreakableUtil.getClusterSearchRoot(part)
 	local inCluster: { [BasePart]: boolean } = {}
 	for _, clusterPart in cluster do
@@ -109,15 +109,36 @@ function BreakableUtil.removeExternalWelds(cluster: { BasePart }, part: BasePart
 		if inst:IsA("WeldConstraint") or inst:IsA("Weld") then
 			local p0 = inst.Part0
 			local p1 = inst.Part1
-			if p0 and p1 then
-				local p0In = inCluster[p0] == true
-				local p1In = inCluster[p1] == true
-				if p0In ~= p1In then
-					inst:Destroy()
-				end
+			if p0 and p1 and (inCluster[p0] or inCluster[p1]) then
+				inst:Destroy()
 			end
 		end
 	end
+end
+
+function BreakableUtil.getTreeRoot(part: BasePart): Instance?
+	local current: Instance? = part
+	while current do
+		if CollectionService:HasTag(current, GameConfig.TreeTag) then
+			return current
+		end
+		current = current.Parent
+	end
+
+	return nil
+end
+
+function BreakableUtil.isTreeForming(part: BasePart): boolean
+	if part:GetAttribute("TreeForming") == true then
+		return true
+	end
+
+	local treeRoot = BreakableUtil.getTreeRoot(part)
+	if treeRoot and treeRoot:GetAttribute("TreeForming") == true then
+		return true
+	end
+
+	return false
 end
 
 function BreakableUtil.isPartBrokenState(part: BasePart): boolean

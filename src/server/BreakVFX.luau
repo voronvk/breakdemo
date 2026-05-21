@@ -3,9 +3,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
 local BreakBudget = require(script.Parent.BreakBudget)
 local BreakRespawnService = require(script.Parent.BreakRespawnService)
-local BreakableUtil = require(ReplicatedStorage.Shared.BreakableUtil)
 local GameConfig = require(ReplicatedStorage.Shared.GameConfig)
 
 local breakFeedbackRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("BreakFeedback") :: RemoteEvent
@@ -275,6 +275,10 @@ function BreakVFX.playGroundShatter(part: BasePart, contactPoint: Vector3)
 end
 
 function BreakVFX.quickFadePart(part: BasePart)
+	if BreakableUtil.getTreeRoot(part) then
+		return
+	end
+
 	local cluster = BreakableUtil.getBreakCluster(part)
 	local visibleCluster: { BasePart } = {}
 
@@ -286,6 +290,12 @@ function BreakVFX.quickFadePart(part: BasePart)
 
 	if #visibleCluster == 0 then
 		return
+	end
+
+	for _, clusterPart in visibleCluster do
+		if not BreakRespawnService.hasSnapshot(clusterPart) then
+			BreakRespawnService.registerBrokenPart(clusterPart, BreakRespawnService.captureSnapshot(clusterPart))
+		end
 	end
 
 	BreakRespawnService.fadeAndHideCluster(visibleCluster, GameConfig.GroundShatterFadeDuration)

@@ -51,7 +51,11 @@ local function getMouseTarget(): BasePart?
 	end
 
 	local part = getPartFromHit(result.Instance)
-	if not part or not BreakableUtil.isBreakable(part) or BreakableUtil.isPartBrokenState(part) then
+	if not part
+		or not BreakableUtil.isBreakable(part)
+		or BreakableUtil.isPartBrokenState(part)
+		or BreakableUtil.isTreeForming(part)
+	then
 		return nil
 	end
 
